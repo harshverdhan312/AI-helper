@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Chat Interface</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="chat-container">
+    <div class="chat-header">
+      AI Assistant
+      <div class="typing-indicator hidden">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </div>
+    <div class="error-message"></div>
+    <div class="chat-messages">
+      <div class="message assistant">
+        <div class="avatar">AI</div>
+        <div class="message-content">
+          Hello! How can I help you today?
+        </div>
+      </div>
+    </div>
+    <div class="input-container">
+      <input type="text" placeholder="Type your message...">
+      <button >Send</button>
+    </div>
+  </div>
+  <script>
+
+const CONFIG = {
+  API_KEY: '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',
+  API_URL: 'https://api.anthropic.com/v1/messages',
+  MODEL: 'claude-3-sonnet-20240229',
+  MAX_TOKENS: 1000,
+  MAX_INPUT_LENGTH: 500
+};
+
+const input = document.querySelector('input');
+const button = document.querySelector('button');
+const messages = document.querySelector('.chat-messages');
+const typingIndicator = document.querySelector('.typing-indicator');
+const errorMessage = document.querySelector('.error-message');
+
+let chatHistory = [];
+
+// Sanitize input to prevent XSS
+function sanitizeInput(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function showError(message) {
+  errorMessage.textContent = message;
+  errorMessage.classList.add('visible');
+  setTimeout(() => {
+    errorMessage.classList.remove('visible');
+  }, 5000);
+}
+
+function addMessage(text, isUser) {
+  const sanitizedText = sanitizeInput(text);
+  const message = document.createElement('div');
+  message.className = `message ${isUser ? 'user' : 'assistant'}`;
+  
+  let content = '';
+  if (!isUser) {
+    content += '<div class="avatar">AI</div>';
+  }
+  content += `<div class="message-content">${sanitizedText}</div>`;
+  message.innerHTML = content;
+  
+  messages.appendChild(message);
+  messages.scrollTop = messages.scrollHeight;
+
+  chatHistory.push({
+    role: isUser ? 'user' : 'assistant',
+    content: text
+  });
+}
+
+function toggleTypingIndicator(show) {
+  typingIndicator.classList.toggle('hidden', !show);
+}
+
+async function initializeChat() {
+  try {
+    input.disabled = false;
+    button.disabled = false;
+  } catch (error) {
+    showError('Failed to initialize chat');
+    console.error('Initialization error:', error);
+  }
+}
+
+function validateInput(text) {
+  if (!text.trim()) return false;
+  if (text.length > CONFIG.MAX_INPUT_LENGTH) {
+    showError(`Message too long. Max ${CONFIG.MAX_INPUT_LENGTH} characters.`);
+    return false;
+  }
+  return true;
+}
+
+async function callAI(userMessage) {
+  try {
+    const response = await fetch(CONFIG.API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': CONFIG.API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        messages: [
+          ...chatHistory, 
+          { role: 'user', content: userMessage }
+        ],
+        model: CONFIG.MODEL,
+        max_tokens: CONFIG.MAX_TOKENS
+      })
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`API request failed: ${response.status} - ${errorBody}`);
+    }
+
+    const data = await response.json();
+    return data.content[0].text;
+  } catch (error) {
+    console.error('API call error:', error);
+    showError('Failed to get AI response. Please try again.');
+    throw error;
+  }
+}
+
+async function handleSend() {
+  const text = input.value.trim();
+
+  if (!validateInput(text)) return;
+
+  input.disabled = true;
+  button.disabled = true;
+
+  try {
+    addMessage(text, true);
+    input.value = '';
+    toggleTypingIndicator(true);
+    
+    const aiResponse = await callAI(text);
+    addMessage(aiResponse, false);
+  } catch (error) {
+    // Error handling already done in callAI method
+  } finally {
+    toggleTypingIndicator(false);
+    input.disabled = false;
+    button.disabled = false;
+    input.focus();
+  }
+}
+
+button.addEventListener('click', handleSend);
+
+input.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    handleSend();
+  }
+});
+
+initializeChat();
+  </script>
+</body>
+</html>
